@@ -6,32 +6,34 @@ on:
 
 jobs:
   deploy:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Install Docker Compose
+      - name: SSH and Deploy to EC2 (AWS Linux 2)
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.AWS_SERVER_IP }}
-          username: ${{ secrets.AWS_USERNAME }}
+          username: ec2-user # AWS Linux 2 uses "ec2-user" instead of "ubuntu"
           key: ${{ secrets.AWS_PRIVATE_KEY }}
           script: |
-            sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-            sudo chmod +x /usr/local/bin/docker-compose
+            # Navigate to the project directory
+            cd /home/ec2-user/fastapi-book-project
 
-      - name: SSH and run commands on EC2
-        uses: appleboy/ssh-action@master
-        with:
-          host: ${{ secrets.AWS_SERVER_IP }}
-          username: ${{ secrets.AWS_USERNAME }}
-          key: ${{ secrets.AWS_PRIVATE_KEY }}
-          script: |
-            whoami  # Check the current user
-            groups  # Check the groups the user belongs to
-            docker context ls # List contexts
-            docker context use default # Set default context
-            docker ps  # Try a simple docker command
-            sudo docker-compose up -d # Run docker-compose with sudo
+            # Pull the latest code
+            git pull origin main
+
+            # Install Python dependencies
+            pip3 install -r requirements.txt
+
+            # Restart Gunicorn (already set up as a service)
+            sudo systemctl restart fastapi
+
+            # Copy Nginx configuration
+            sudo cp nginx/nginx.conf /etc/nginx/conf.d/default.conf
+
+            # Test and reload Nginx
+            sudo nginx -t
+            sudo systemctl reload nginx
